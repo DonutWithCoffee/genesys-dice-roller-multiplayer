@@ -1,99 +1,79 @@
-import { createStore } from "redux";
-
-type Redux<Payload> = {
-    dispatch(arg: { type: "CHANGE", value: Payload }): void;
-    subscribe(arg: () => void): () => void;
-    getState(): { value: Payload };
-}
+type Listener<Payload> = (value: Payload) => void;
 
 export class Settings<Payload> {
+  readonly name: string;
 
-    constructor(name: string, initialValue?: Payload) {
+  private value: Payload;
+  private listeners: Set<Listener<Payload>> = new Set();
 
-        const savedValue: string | null = window.localStorage.getItem(name);
-        if (savedValue) {
-            initialValue = JSON.parse(savedValue).value;
-        }
+  constructor(name: string, initialValue: Payload) {
+    this.name = name;
+    this.value = initialValue;
 
-        this.name = name;
-        this.store = createStore(this.reducer.bind(this), { value: initialValue });
+    const savedValue = window.localStorage.getItem(name);
+
+    if (savedValue) {
+      this.value = JSON.parse(savedValue).value;
+    }
+  }
+
+  on(callback: Listener<Payload>): void {
+    this.listeners.add(callback);
+  }
+
+  off(callback: Listener<Payload>): void {
+    this.listeners.delete(callback);
+  }
+
+  get(): Payload {
+    return this.value;
+  }
+
+  set(value: Payload): void {
+    if (value === this.value) {
+      return;
     }
 
-    readonly name: string;
+    this.value = value;
 
-    private store: Redux<Payload>;
+    window.localStorage.setItem(this.name, JSON.stringify({ value }));
 
-    private subscriptions: Map<(p: Payload) => void, () => void> = new Map();
-
-    protected reducer(state: { value: Payload }, action: { type?: "CHANGE", value: Payload }): { value: Payload } {
-        if (action.type === "CHANGE" && action.value !== state.value) {
-            const result = { value: action.value };
-            window.localStorage.setItem(this.name, JSON.stringify(result));
-            return result;
-        }
-        return state;
-    }
-
-    on(callback: (p: Payload) => void): void {
-        const handler = () => callback(this.get());
-        this.subscriptions.set(callback, this.store.subscribe(handler));
-    }
-
-    off(callback: (p: Payload) => void): void {
-        const unsubscribe = this.subscriptions.get(callback);
-        if (unsubscribe) {
-            unsubscribe();
-        }
-    }
-
-    get(): Payload {
-        return this.store.getState().value;
-    }
-
-    set(value: Payload): void {
-        this.store.dispatch({ type: "CHANGE", value });
-    }
+    this.listeners.forEach(listener => listener(value));
+  }
 }
 
 type ThemeOptions = "light" | "dark" | null;
+
 const themeOptionList: ThemeOptions[] = ["light", "dark", null];
 
 class ThemeSettings extends Settings<ThemeOptions> {
+  constructor() {
+    super("theme", null);
+  }
 
-    constructor() {
-        super("theme", null);
+  getClass(): NonNullable<ThemeOptions> {
+    const selectedTheme = this.get();
+
+    if (selectedTheme) {
+      return selectedTheme;
     }
 
-    getClass(): NonNullable<ThemeOptions> {
-
-        const selectedTheme = this.get();
-
-        if (selectedTheme) {
-            return selectedTheme;
-        } else if (window.matchMedia("(prefers-color-scheme: light)").matches) {
-            return "light";
-        } else if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
-            return "dark";
-        }
-        return "light";
+    if (window.matchMedia("(prefers-color-scheme: light)").matches) {
+      return "light";
     }
 
-    toggle(): void {
-        const newThemeIndex = (themeOptionList.indexOf(this.get()) + 1) % themeOptionList.length;
-        this.set(themeOptionList[newThemeIndex]);
+    if (window.matchMedia("(prefers-color-scheme: dark)").matches) {
+      return "dark";
     }
+
+    return "light";
+  }
+
+  toggle(): void {
+    const newThemeIndex = (themeOptionList.indexOf(this.get()) + 1) % themeOptionList.length;
+
+    this.set(themeOptionList[newThemeIndex]);
+  }
 }
 
 export const Theme = new ThemeSettings();
-
-export const Webhooks = new Settings<string[]>("webhooks", []);
-export const WebhookNames = new Settings<string[]>("webhook_names", []);
-export const WebhookPriority = new Settings<number>("webhook_priority", 0);
-
-export function getWebhook(): string | null {
-    const hooks = Webhooks.get();
-    const index = WebhookPriority.get();
-    return hooks[index] || null;
-}
-export const Username = new Settings<string>("username", "");
-export const AutoDiscord = new Settings<boolean>("auto_discord", false);
