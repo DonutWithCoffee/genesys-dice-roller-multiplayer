@@ -4,6 +4,7 @@ const express = require("express");
 const { Server } = require("socket.io");
 
 const RoomManager = require("./room-manager");
+const { executeRollRequest } = require("./dice-engine");
 
 const PORT = Number(process.env.PORT || 3001);
 const HOST = process.env.HOST || "0.0.0.0";
@@ -11,6 +12,7 @@ const HOST = process.env.HOST || "0.0.0.0";
 const app = express();
 const httpServer = http.createServer(app);
 const roomManager = new RoomManager();
+const socketRollState = new Map();
 
 const io = new Server(httpServer, {
   path: "/socket.io",
@@ -93,7 +95,55 @@ io.on("connection", socket => {
     }
   });
 
+  socket.on("roll_request", payload => {
+    const previousState = socketRollState.get(socket.id);
+    const execution = executeRollRequest(
+      payload,
+      previousState ? previousState.results : null
+    );
+
+    if (!execution.ok) {
+      socket.emit("roll_error", {
+        code: "INVALID_ROLL_REQUEST",
+        errors: execution.errors
+      });
+
+      return;
+    }
+
+    const rollResult = execution.result;
+
+    if (rollResult.roomId && !socket.rooms.has(rollResult.roomId)) {
+      socket.emit("roll_error", {
+        code: "ROOM_NOT_JOINED",
+        message: "socket must join the room before rolling"
+      });
+
+      return;
+    }
+
+    socketRollState.set(socket.id, {
+      roomId: rollResult.roomId,
+      results: rollResult.results,
+      updatedAt: Date.now()
+    });
+
+    if (rollResult.visibility === "gm_hidden") {
+      socket.emit("roll_result", rollResult);
+      return;
+    }
+
+    if (rollResult.roomId) {
+      io.to(rollResult.roomId).emit("roll_result", rollResult);
+      return;
+    }
+
+    socket.emit("roll_result", rollResult);
+  });
+
   socket.on("disconnect", () => {
+    socketRollState.delete(socket.id);
+
     const changedRooms = roomManager.removeSocket(socket.id);
 
     changedRooms.forEach(change => {
