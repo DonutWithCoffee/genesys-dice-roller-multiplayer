@@ -123,7 +123,12 @@ io.on("connection", socket => {
 
     socket.join(roomId);
 
-    const snapshot = roomManager.joinRoom(roomId, socket.id, payload.playerName);
+    const snapshot = roomManager.joinRoom(
+      roomId,
+      socket.id,
+      payload.playerName,
+      payload.isGm
+    );
 
     io.to(roomId).emit("room_state", snapshot);
     socket.emit("room_joined", snapshot);
@@ -141,7 +146,12 @@ io.on("connection", socket => {
       return;
     }
 
-    const snapshot = roomManager.updatePlayerName(roomId, socket.id, payload.playerName);
+    const snapshot = roomManager.updatePlayer(
+      roomId,
+      socket.id,
+      payload.playerName,
+      payload.isGm
+    );
 
     if (snapshot) {
       io.to(roomId).emit("room_state", snapshot);
@@ -182,6 +192,26 @@ io.on("connection", socket => {
       return;
     }
 
+    if (payload && payload.visibility === "gm_hidden") {
+      if (!roomId) {
+        socket.emit("roll_error", {
+          code: "ROOM_REQUIRED_FOR_HIDDEN_ROLL",
+          message: "hidden rolls are only available in rooms"
+        });
+
+        return;
+      }
+
+      if (!roomManager.isRoomGm(roomId, socket.id)) {
+        socket.emit("roll_error", {
+          code: "NOT_GM",
+          message: "only GM players can make hidden rolls"
+        });
+
+        return;
+      }
+    }
+
     const authoritativePayload = createAuthoritativeRollPayload(socket, payload);
     const previousResults = getPreviousResultsForRoll(socket, authoritativePayload);
     const execution = executeRollRequest(authoritativePayload, previousResults);
@@ -219,7 +249,7 @@ io.on("connection", socket => {
 
     changedRooms.forEach(change => {
       if (change.snapshot) {
-        socket.to(change.roomId).emit("room_state", change.snapshot);
+        io.to(change.roomId).emit("room_state", change.snapshot);
       } else {
         roomRollState.delete(change.roomId);
       }
