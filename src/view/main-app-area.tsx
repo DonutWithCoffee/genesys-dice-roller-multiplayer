@@ -11,27 +11,81 @@ import { orderDice } from "src/util/order";
 
 import { rollDiceLocally } from "src/service/roll-service";
 
+import { applyResultsToDice } from "src/model/dice-result-sync";
+import {
+  createLocalRollRequest,
+  deserializeRollResults,
+  RollResult
+} from "src/model/roll-contracts";
+import {
+  createMultiplayerSocketClient,
+  getRoomIdFromPath,
+  MultiplayerSocketClient
+} from "src/network/socket-client";
+
 type MainAppAreaState = {
   dice: AllowedDice[];
   selected: AllowedDice[];
   results: AllowedResults[];
+  roomId: string | null;
 };
 
 export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
+    private multiplayerClient: MultiplayerSocketClient | null = null;
+
   constructor(props: {}) {
     super(props);
 
-    this.state = {
-      dice: [],
-      selected: [],
-      results: []
-    };
+this.state = {
+  dice: [],
+  selected: [],
+  results: [],
+  roomId: getRoomIdFromPath(window.location.pathname)
+};
 
     this.addDie = this.addDie.bind(this);
     this.clearDice = this.clearDice.bind(this);
     this.toggleSelection = this.toggleSelection.bind(this);
     this.roll = this.roll.bind(this);
+    this.applyRemoteRollResult = this.applyRemoteRollResult.bind(this);
   }
+
+componentDidMount(): void {
+  const { roomId } = this.state;
+
+  if (!roomId) {
+    return;
+  }
+
+  this.multiplayerClient = createMultiplayerSocketClient(roomId, {
+    onRollResult: this.applyRemoteRollResult,
+    onRollError: error => {
+      console.error("Roll error", error);
+    },
+    onRoomError: error => {
+      console.error("Room error", error);
+    }
+  });
+}
+
+componentWillUnmount(): void {
+  if (this.multiplayerClient) {
+    this.multiplayerClient.disconnect();
+    this.multiplayerClient = null;
+  }
+}
+
+applyRemoteRollResult(result: RollResult): void {
+  const results = deserializeRollResults(result.results);
+  const dice = applyResultsToDice(this.state.dice, results);
+
+  this.setState({
+    ...this.state,
+    dice,
+    selected: [],
+    results
+  });
+}
 
   addDie(newDie: AllowedDice): void {
     const { dice } = this.state;
@@ -79,7 +133,18 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
   }
 
 roll(): void {
-  const { dice, selected } = this.state;
+  const { dice, selected, roomId } = this.state;
+
+  if (this.multiplayerClient && roomId) {
+    this.multiplayerClient.requestRoll(createLocalRollRequest({
+      dice,
+      selected,
+      roomId,
+      visibility: "public"
+    }));
+
+    return;
+  }
 
   this.setState(rollDiceLocally({
     dice,
