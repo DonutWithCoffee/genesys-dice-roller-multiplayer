@@ -289,6 +289,7 @@ function executeRollRequest(request, previousResults) {
       rollerId: normalizedRequest.rollerId,
       rollerName: normalizedRequest.rollerName,
       visibility: normalizedRequest.visibility,
+      pool: normalizedRequest.pool,
       results,
       createdAt: Date.now()
     }

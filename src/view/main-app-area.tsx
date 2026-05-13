@@ -11,6 +11,8 @@ import { orderDice } from "src/util/order";
 
 import { rollDiceLocally } from "src/service/roll-service";
 
+import { recreateDicePool } from "src/model/dice-descriptor";
+
 import { applyResultsToDice } from "src/model/dice-result-sync";
 import {
   createLocalRollRequest,
@@ -77,7 +79,10 @@ componentWillUnmount(): void {
 
 applyRemoteRollResult(result: RollResult): void {
   const results = deserializeRollResults(result.results);
-  const dice = applyResultsToDice(this.state.dice, results);
+  const dice = applyResultsToDice(
+    recreateDicePool(result.pool.dice),
+    results
+  );
 
   this.setState({
     ...this.state,

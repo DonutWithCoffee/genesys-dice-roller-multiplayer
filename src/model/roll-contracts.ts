@@ -32,6 +32,7 @@ export type RollResult = {
   rollerId: string | null;
   rollerName: string | null;
   visibility: RollVisibility;
+  pool: DicePoolDescriptor;
   results: SerializedRollResult[];
   createdAt: number;
 };
@@ -92,6 +93,7 @@ export function createRollResult(
     rollerId: request.rollerId,
     rollerName: request.rollerName,
     visibility: request.visibility,
+    pool: request.pool,
     results: serializeRollResults(results),
     createdAt
   };
