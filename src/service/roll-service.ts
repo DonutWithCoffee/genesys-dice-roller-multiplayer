@@ -1,4 +1,5 @@
 import { AllowedDice, AllowedResults } from "src/model/dice";
+import { createDicePoolDescriptor } from "src/model/dice-descriptor";
 
 export type RollServiceInput = {
   dice: AllowedDice[];
@@ -13,9 +14,12 @@ export type RollServiceOutput = {
 
 export function rollDiceLocally(input: RollServiceInput): RollServiceOutput {
   const { dice, selected } = input;
+  const poolDescriptor = createDicePoolDescriptor(dice, selected);
 
-  if (selected.length) {
-    selected.forEach(die => die.roll());
+  if (poolDescriptor.selectedIndexes.length) {
+    poolDescriptor.selectedIndexes.forEach(index => {
+      dice[index].roll();
+    });
 
     return {
       dice,
