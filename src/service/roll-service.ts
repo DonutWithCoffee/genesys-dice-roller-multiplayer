@@ -1,5 +1,9 @@
 import { AllowedDice, AllowedResults } from "src/model/dice";
-import { createDicePoolDescriptor } from "src/model/dice-descriptor";
+import {
+  createLocalRollRequest,
+  createRollResult,
+  deserializeRollResults
+} from "src/model/roll-contracts";
 
 export type RollServiceInput = {
   dice: AllowedDice[];
@@ -14,23 +18,25 @@ export type RollServiceOutput = {
 
 export function rollDiceLocally(input: RollServiceInput): RollServiceOutput {
   const { dice, selected } = input;
-  const poolDescriptor = createDicePoolDescriptor(dice, selected);
+  const request = createLocalRollRequest({ dice, selected });
 
-  if (poolDescriptor.selectedIndexes.length) {
-    poolDescriptor.selectedIndexes.forEach(index => {
+  let rolledResults: AllowedResults[];
+
+  if (request.pool.selectedIndexes.length) {
+    request.pool.selectedIndexes.forEach(index => {
       dice[index].roll();
     });
 
-    return {
-      dice,
-      selected: [],
-      results: dice.map(die => die.currentResult)
-    };
+    rolledResults = dice.map(die => die.currentResult);
+  } else {
+    rolledResults = dice.map(die => die.roll());
   }
+
+  const result = createRollResult(request, rolledResults);
 
   return {
     dice,
     selected: [],
-    results: dice.map(die => die.roll())
+    results: deserializeRollResults(result.results)
   };
 }
