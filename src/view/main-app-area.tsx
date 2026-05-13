@@ -9,6 +9,8 @@ import RollResults from "src/view/roll-results";
 
 import { orderDice } from "src/util/order";
 
+import { rollDiceLocally } from "src/service/roll-service";
+
 type MainAppAreaState = {
   dice: AllowedDice[];
   selected: AllowedDice[];
@@ -76,24 +78,14 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }
   }
 
-  roll(): void {
-    const { dice, selected } = this.state;
+roll(): void {
+  const { dice, selected } = this.state;
 
-    if (selected.length) {
-      selected.forEach(die => die.roll());
-
-      this.setState({
-        dice,
-        selected: [],
-        results: dice.map(die => die.currentResult)
-      });
-    } else {
-      this.setState({
-        ...this.state,
-        results: dice.map(die => die.roll())
-      });
-    }
-  }
+  this.setState(rollDiceLocally({
+    dice,
+    selected
+  }));
+}
 
   render() {
     return <div className="dice-area">
