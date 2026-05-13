@@ -4,9 +4,17 @@ import { RollRequest, RollResult } from "src/model/roll-contracts";
 
 type SocketInstance = ReturnType<typeof io>;
 
+export type PlayerSnapshot = {
+  id: string;
+  name: string;
+  joinedAt: number;
+  updatedAt: number;
+};
+
 export type RoomSnapshot = {
   id: string;
   playerCount: number;
+  players: PlayerSnapshot[];
   createdAt: number;
   updatedAt: number;
 };
@@ -37,6 +45,7 @@ export type MultiplayerSocketClient = {
   getRoomId(): string;
   isConnected(): boolean;
   isJoined(): boolean;
+  updatePlayerName(playerName: string): void;
   requestRoll(request: RollRequest): void;
   disconnect(): void;
 };
@@ -55,8 +64,19 @@ export function getRoomIdFromPath(pathname: string): string | null {
   }
 }
 
+function normalizePlayerName(playerName: string): string {
+  const trimmed = playerName.trim();
+
+  if (!trimmed) {
+    return "Player";
+  }
+
+  return trimmed.slice(0, 32);
+}
+
 export function createMultiplayerSocketClient(
   roomId: string,
+  playerName: string,
   handlers: MultiplayerSocketHandlers = {}
 ): MultiplayerSocketClient {
   const normalizedRoomId = roomId.trim();
@@ -66,6 +86,7 @@ export function createMultiplayerSocketClient(
   }
 
   let joined = false;
+  let currentPlayerName = normalizePlayerName(playerName);
   const pendingRollRequests: RollRequest[] = [];
 
   const socket: SocketInstance = io({
@@ -73,10 +94,29 @@ export function createMultiplayerSocketClient(
     transports: ["websocket", "polling"]
   });
 
+  function emitRoomJoin(): void {
+    socket.emit("room_join", {
+      roomId: normalizedRoomId,
+      playerName: currentPlayerName
+    });
+  }
+
+  function emitPlayerUpdate(): void {
+    if (!joined) {
+      return;
+    }
+
+    socket.emit("room_player_update", {
+      roomId: normalizedRoomId,
+      playerName: currentPlayerName
+    });
+  }
+
   function emitRollRequest(request: RollRequest): void {
     socket.emit("roll_request", {
       ...request,
-      roomId: normalizedRoomId
+      roomId: normalizedRoomId,
+      rollerName: currentPlayerName
     });
   }
 
@@ -92,15 +132,11 @@ export function createMultiplayerSocketClient(
 
   socket.on("connect", () => {
     handlers.onConnect?.();
-
-    socket.emit("room_join", {
-      roomId: normalizedRoomId
-    });
+    emitRoomJoin();
   });
 
   socket.on("disconnect", () => {
     joined = false;
-
     handlers.onDisconnect?.();
   });
 
@@ -142,6 +178,11 @@ export function createMultiplayerSocketClient(
 
     isJoined(): boolean {
       return joined;
+    },
+
+    updatePlayerName(playerNameToSet: string): void {
+      currentPlayerName = normalizePlayerName(playerNameToSet);
+      emitPlayerUpdate();
     },
 
     requestRoll(request: RollRequest): void {

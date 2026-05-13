@@ -91,6 +91,18 @@ function saveRollState(socket, rollResult) {
   }
 }
 
+function createAuthoritativeRollPayload(socket, payload) {
+  const roomId = getRoomIdFromPayload(payload);
+  const player = roomId ? roomManager.getPlayer(roomId, socket.id) : null;
+
+  return {
+    ...payload,
+    roomId,
+    rollerId: socket.id,
+    rollerName: player ? player.name : "Player"
+  };
+}
+
 io.on("connection", socket => {
   socket.emit("server_hello", {
     socketId: socket.id,
@@ -111,10 +123,29 @@ io.on("connection", socket => {
 
     socket.join(roomId);
 
-    const snapshot = roomManager.joinRoom(roomId, socket.id);
+    const snapshot = roomManager.joinRoom(roomId, socket.id, payload.playerName);
 
+    io.to(roomId).emit("room_state", snapshot);
     socket.emit("room_joined", snapshot);
-    socket.to(roomId).emit("room_state", snapshot);
+  });
+
+  socket.on("room_player_update", payload => {
+    const roomId = getRoomIdFromPayload(payload);
+
+    if (!roomId || !socket.rooms.has(roomId)) {
+      socket.emit("room_error", {
+        code: "ROOM_NOT_JOINED",
+        message: "socket must join the room before updating player info"
+      });
+
+      return;
+    }
+
+    const snapshot = roomManager.updatePlayerName(roomId, socket.id, payload.playerName);
+
+    if (snapshot) {
+      io.to(roomId).emit("room_state", snapshot);
+    }
   });
 
   socket.on("room_leave", payload => {
@@ -133,15 +164,27 @@ io.on("connection", socket => {
     });
 
     if (snapshot) {
-      socket.to(roomId).emit("room_state", snapshot);
+      io.to(roomId).emit("room_state", snapshot);
     } else {
       roomRollState.delete(roomId);
     }
   });
 
   socket.on("roll_request", payload => {
-    const previousResults = getPreviousResultsForRoll(socket, payload);
-    const execution = executeRollRequest(payload, previousResults);
+    const roomId = getRoomIdFromPayload(payload);
+
+    if (roomId && !socket.rooms.has(roomId)) {
+      socket.emit("roll_error", {
+        code: "ROOM_NOT_JOINED",
+        message: "socket must join the room before rolling"
+      });
+
+      return;
+    }
+
+    const authoritativePayload = createAuthoritativeRollPayload(socket, payload);
+    const previousResults = getPreviousResultsForRoll(socket, authoritativePayload);
+    const execution = executeRollRequest(authoritativePayload, previousResults);
 
     if (!execution.ok) {
       socket.emit("roll_error", {
@@ -153,15 +196,6 @@ io.on("connection", socket => {
     }
 
     const rollResult = execution.result;
-
-    if (rollResult.roomId && !socket.rooms.has(rollResult.roomId)) {
-      socket.emit("roll_error", {
-        code: "ROOM_NOT_JOINED",
-        message: "socket must join the room before rolling"
-      });
-
-      return;
-    }
 
     saveRollState(socket, rollResult);
 

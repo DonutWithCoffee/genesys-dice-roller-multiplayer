@@ -58,3 +58,57 @@ html {
 }
 
 @import "./components/menu";
+
+.room-status {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.22);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.42);
+  color: #f4f4f4;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.room-status__topline,
+.room-status__players {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.room-status__item,
+.room-status__player {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+}
+
+.room-status__name {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+  margin: 0.5rem 0;
+}
+
+.room-status__name input {
+  max-width: 12rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.95);
+  color: #111;
+  font: inherit;
+}
+
+.room-status__player {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.14);
+}
