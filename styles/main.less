@@ -112,3 +112,95 @@ html {
   border-radius: 0.25rem;
   background: rgba(255, 255, 255, 0.14);
 }
+
+.room-status {
+  box-sizing: border-box;
+  width: 100%;
+  max-width: 46rem;
+  margin: 0 auto 0.85rem;
+  padding: 0.65rem 0.75rem;
+  border: 1px solid rgba(255, 255, 255, 0.28);
+  border-radius: 0.5rem;
+  background: rgba(0, 0, 0, 0.58);
+  color: #f7f7f7;
+  font-size: 0.85rem;
+  line-height: 1.35;
+}
+
+.room-status__topline,
+.room-status__players,
+.room-status__controls {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.45rem 0.75rem;
+  justify-content: center;
+  align-items: center;
+}
+
+.room-status__item,
+.room-status__player {
+  display: inline-flex;
+  align-items: center;
+  min-height: 1.35rem;
+}
+
+.room-status__controls {
+  margin: 0.5rem 0;
+}
+
+.room-status__name,
+.room-status__gm-toggle {
+  display: inline-flex;
+  justify-content: center;
+  align-items: center;
+  gap: 0.45rem;
+}
+
+.room-status__name input {
+  max-width: 12rem;
+  padding: 0.2rem 0.4rem;
+  border: 1px solid rgba(255, 255, 255, 0.35);
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.96);
+  color: #111;
+  font: inherit;
+}
+
+.room-status__gm-toggle input {
+  width: 1rem;
+  height: 1rem;
+}
+
+.room-status__player {
+  padding: 0.05rem 0.35rem;
+  border-radius: 0.25rem;
+  background: rgba(255, 255, 255, 0.14);
+}
+
+.room-status__player--gm {
+  background: rgba(255, 220, 120, 0.28);
+}
+
+.room-status__gm-note {
+  margin-top: 0.45rem;
+  text-align: center;
+  font-size: 0.78rem;
+  opacity: 0.9;
+}
+
+#hidden-roll {
+  border-color: rgba(255, 190, 90, 0.95);
+  background: rgba(120, 70, 20, 0.92);
+  color: #fff2d6;
+  box-shadow: 0 0 0.45rem rgba(255, 180, 70, 0.35);
+}
+
+#hidden-roll:hover,
+#hidden-roll:focus {
+  background: rgba(155, 90, 25, 0.98);
+  color: #fff8e8;
+}
+
+#hidden-roll:active {
+  background: rgba(95, 50, 15, 1);
+}

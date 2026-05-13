@@ -4,9 +4,13 @@ import { RollRequest, RollResult } from "src/model/roll-contracts";
 
 type SocketInstance = ReturnType<typeof io>;
 
+export type PlayerRole = "gm" | "player";
+
 export type PlayerSnapshot = {
   id: string;
   name: string;
+  isGm: boolean;
+  role: PlayerRole;
   joinedAt: number;
   updatedAt: number;
 };
@@ -14,6 +18,8 @@ export type PlayerSnapshot = {
 export type RoomSnapshot = {
   id: string;
   playerCount: number;
+  gmId: string | null;
+  gmName: string | null;
   players: PlayerSnapshot[];
   createdAt: number;
   updatedAt: number;
@@ -45,7 +51,7 @@ export type MultiplayerSocketClient = {
   getRoomId(): string;
   isConnected(): boolean;
   isJoined(): boolean;
-  updatePlayerName(playerName: string): void;
+  updatePlayer(playerName: string, isGm: boolean): void;
   requestRoll(request: RollRequest): void;
   disconnect(): void;
 };
@@ -77,6 +83,7 @@ function normalizePlayerName(playerName: string): string {
 export function createMultiplayerSocketClient(
   roomId: string,
   playerName: string,
+  isGm: boolean,
   handlers: MultiplayerSocketHandlers = {}
 ): MultiplayerSocketClient {
   const normalizedRoomId = roomId.trim();
@@ -87,6 +94,7 @@ export function createMultiplayerSocketClient(
 
   let joined = false;
   let currentPlayerName = normalizePlayerName(playerName);
+  let currentIsGm = isGm === true;
   const pendingRollRequests: RollRequest[] = [];
 
   const socket: SocketInstance = io({
@@ -97,7 +105,8 @@ export function createMultiplayerSocketClient(
   function emitRoomJoin(): void {
     socket.emit("room_join", {
       roomId: normalizedRoomId,
-      playerName: currentPlayerName
+      playerName: currentPlayerName,
+      isGm: currentIsGm
     });
   }
 
@@ -108,7 +117,8 @@ export function createMultiplayerSocketClient(
 
     socket.emit("room_player_update", {
       roomId: normalizedRoomId,
-      playerName: currentPlayerName
+      playerName: currentPlayerName,
+      isGm: currentIsGm
     });
   }
 
@@ -180,8 +190,9 @@ export function createMultiplayerSocketClient(
       return joined;
     },
 
-    updatePlayerName(playerNameToSet: string): void {
+    updatePlayer(playerNameToSet: string, isGmToSet: boolean): void {
       currentPlayerName = normalizePlayerName(playerNameToSet);
+      currentIsGm = isGmToSet === true;
       emitPlayerUpdate();
     },
 

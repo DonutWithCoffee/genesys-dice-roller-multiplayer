@@ -12,6 +12,10 @@ function normalizePlayerName(playerName) {
   return trimmed.slice(0, 32);
 }
 
+function normalizeIsGm(isGm) {
+  return isGm === true;
+}
+
 class RoomManager {
   constructor() {
     this.rooms = new Map();
@@ -34,23 +38,55 @@ class RoomManager {
     return this.rooms.get(roomId);
   }
 
-  joinRoom(roomId, socketId, playerName) {
+  setExclusiveGm(room, socketId) {
+    const now = Date.now();
+
+    for (const player of room.players.values()) {
+      const shouldBeGm = player.id === socketId;
+
+      if (player.isGm !== shouldBeGm) {
+        player.isGm = shouldBeGm;
+        player.updatedAt = now;
+      }
+    }
+
+    room.updatedAt = now;
+  }
+
+  clearGmIfCurrent(room, socketId) {
+    const player = room.players.get(socketId);
+
+    if (!player || !player.isGm) {
+      return;
+    }
+
+    player.isGm = false;
+    player.updatedAt = Date.now();
+    room.updatedAt = Date.now();
+  }
+
+  joinRoom(roomId, socketId, playerName, isGm) {
     const room = this.ensureRoom(roomId);
     const now = Date.now();
 
     room.players.set(socketId, {
       id: socketId,
       name: normalizePlayerName(playerName),
+      isGm: false,
       joinedAt: now,
       updatedAt: now
     });
 
-    room.updatedAt = now;
+    if (normalizeIsGm(isGm)) {
+      this.setExclusiveGm(room, socketId);
+    } else {
+      room.updatedAt = now;
+    }
 
     return this.getRoomSnapshot(roomId);
   }
 
-  updatePlayerName(roomId, socketId, playerName) {
+  updatePlayer(roomId, socketId, playerName, isGm) {
     const room = this.rooms.get(roomId);
 
     if (!room || !room.players.has(socketId)) {
@@ -61,6 +97,13 @@ class RoomManager {
 
     player.name = normalizePlayerName(playerName);
     player.updatedAt = Date.now();
+
+    if (normalizeIsGm(isGm)) {
+      this.setExclusiveGm(room, socketId);
+    } else {
+      this.clearGmIfCurrent(room, socketId);
+    }
+
     room.updatedAt = Date.now();
 
     return this.getRoomSnapshot(roomId);
@@ -74,6 +117,12 @@ class RoomManager {
     }
 
     return room.players.get(socketId) || null;
+  }
+
+  isRoomGm(roomId, socketId) {
+    const player = this.getPlayer(roomId, socketId);
+
+    return Boolean(player && player.isGm);
   }
 
   leaveRoom(roomId, socketId) {
@@ -121,13 +170,19 @@ class RoomManager {
       .map(player => ({
         id: player.id,
         name: player.name,
+        isGm: player.isGm,
+        role: player.isGm ? "gm" : "player",
         joinedAt: player.joinedAt,
         updatedAt: player.updatedAt
       }));
 
+    const gmPlayer = players.find(player => player.isGm) || null;
+
     return {
       id: room.id,
       playerCount: players.length,
+      gmId: gmPlayer ? gmPlayer.id : null,
+      gmName: gmPlayer ? gmPlayer.name : null,
       players,
       createdAt: room.createdAt,
       updatedAt: room.updatedAt

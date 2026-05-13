@@ -7,7 +7,8 @@ import { applyResultsToDice } from "src/model/dice-result-sync";
 import {
   createLocalRollRequest,
   deserializeRollResults,
-  RollResult
+  RollResult,
+  RollVisibility
 } from "src/model/roll-contracts";
 
 import DiceControls from "src/view/dice-controls";
@@ -22,7 +23,8 @@ import {
   getRoomIdFromPath,
   MultiplayerSocketClient,
   PlayerSnapshot,
-  RoomSnapshot
+  RoomSnapshot,
+  ServerHello
 } from "src/network/socket-client";
 
 type MultiplayerStatus = "local" | "connecting" | "connected" | "disconnected";
@@ -36,7 +38,12 @@ type MainAppAreaState = {
   roomPlayerCount: number | null;
   players: PlayerSnapshot[];
   playerName: string;
+  isGm: boolean;
+  currentSocketId: string | null;
+  roomGmId: string | null;
+  roomGmName: string | null;
   lastRollerName: string | null;
+  lastRollVisibility: RollVisibility | null;
 };
 
 function getInitialPlayerName(): string {
@@ -47,6 +54,10 @@ function getInitialPlayerName(): string {
   }
 
   return `Player-${Math.random().toString(36).slice(2, 6)}`;
+}
+
+function getInitialIsGm(): boolean {
+  return window.localStorage.getItem("genesys-is-gm") === "true";
 }
 
 function normalizePlayerName(playerName: string): string {
@@ -67,6 +78,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
     const roomId = getRoomIdFromPath(window.location.pathname);
     const playerName = getInitialPlayerName();
+    const isGm = getInitialIsGm();
 
     this.state = {
       dice: [],
@@ -77,26 +89,34 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       roomPlayerCount: null,
       players: [],
       playerName,
-      lastRollerName: null
+      isGm,
+      currentSocketId: null,
+      roomGmId: null,
+      roomGmName: null,
+      lastRollerName: null,
+      lastRollVisibility: null
     };
 
     this.addDie = this.addDie.bind(this);
     this.clearDice = this.clearDice.bind(this);
     this.toggleSelection = this.toggleSelection.bind(this);
     this.roll = this.roll.bind(this);
+    this.rollHidden = this.rollHidden.bind(this);
+    this.applyServerHello = this.applyServerHello.bind(this);
     this.applyRemoteRollResult = this.applyRemoteRollResult.bind(this);
     this.applyRoomSnapshot = this.applyRoomSnapshot.bind(this);
     this.handlePlayerNameChange = this.handlePlayerNameChange.bind(this);
+    this.handleGmChange = this.handleGmChange.bind(this);
   }
 
   componentDidMount(): void {
-    const { roomId, playerName } = this.state;
+    const { roomId, playerName, isGm } = this.state;
 
     if (!roomId) {
       return;
     }
 
-    this.multiplayerClient = createMultiplayerSocketClient(roomId, playerName, {
+    this.multiplayerClient = createMultiplayerSocketClient(roomId, playerName, isGm, {
       onConnect: () => {
         this.setState({
           multiplayerStatus: "connecting"
@@ -106,9 +126,13 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         this.setState({
           multiplayerStatus: "disconnected",
           roomPlayerCount: null,
-          players: []
+          players: [],
+          currentSocketId: null,
+          roomGmId: null,
+          roomGmName: null
         });
       },
+      onServerHello: this.applyServerHello,
       onRoomJoined: this.applyRoomSnapshot,
       onRoomState: this.applyRoomSnapshot,
       onRollResult: this.applyRemoteRollResult,
@@ -121,7 +145,9 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         this.setState({
           multiplayerStatus: "disconnected",
           roomPlayerCount: null,
-          players: []
+          players: [],
+          roomGmId: null,
+          roomGmName: null
         });
       }
     });
@@ -134,12 +160,31 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }
   }
 
-  applyRoomSnapshot(snapshot: RoomSnapshot): void {
+  applyServerHello(payload: ServerHello): void {
     this.setState({
+      currentSocketId: payload.socketId
+    });
+  }
+
+  applyRoomSnapshot(snapshot: RoomSnapshot): void {
+    const currentPlayer = this.state.currentSocketId
+      ? snapshot.players.find(player => player.id === this.state.currentSocketId)
+      : null;
+
+    const nextState: Partial<MainAppAreaState> = {
       multiplayerStatus: "connected",
       roomPlayerCount: snapshot.playerCount,
-      players: snapshot.players
-    });
+      players: snapshot.players,
+      roomGmId: snapshot.gmId,
+      roomGmName: snapshot.gmName
+    };
+
+    if (currentPlayer && currentPlayer.isGm !== this.state.isGm) {
+      nextState.isGm = currentPlayer.isGm;
+      window.localStorage.setItem("genesys-is-gm", currentPlayer.isGm ? "true" : "false");
+    }
+
+    this.setState(nextState as Pick<MainAppAreaState, keyof MainAppAreaState>);
   }
 
   applyRemoteRollResult(result: RollResult): void {
@@ -153,8 +198,15 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       dice,
       selected: [],
       results,
-      lastRollerName: result.rollerName || "Player"
+      lastRollerName: result.rollerName || "Player",
+      lastRollVisibility: result.visibility
     });
+  }
+
+  syncPlayerState(playerName: string, isGm: boolean): void {
+    if (this.multiplayerClient) {
+      this.multiplayerClient.updatePlayer(playerName, isGm);
+    }
   }
 
   handlePlayerNameChange(event: React.ChangeEvent<HTMLInputElement>): void {
@@ -166,9 +218,19 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       playerName
     });
 
-    if (this.multiplayerClient) {
-      this.multiplayerClient.updatePlayerName(playerName);
-    }
+    this.syncPlayerState(playerName, this.state.isGm);
+  }
+
+  handleGmChange(event: React.ChangeEvent<HTMLInputElement>): void {
+    const isGm = event.target.checked;
+
+    window.localStorage.setItem("genesys-is-gm", isGm ? "true" : "false");
+
+    this.setState({
+      isGm
+    });
+
+    this.syncPlayerState(this.state.playerName, isGm);
   }
 
   addDie(newDie: AllowedDice): void {
@@ -198,7 +260,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       dice: [],
       selected: [],
       results: [],
-      lastRollerName: null
+      lastRollerName: null,
+      lastRollVisibility: null
     });
   }
 
@@ -218,7 +281,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     });
   }
 
-  roll(): void {
+  submitRoll(visibility: RollVisibility): void {
     const { dice, selected, roomId, playerName } = this.state;
 
     if (this.multiplayerClient && roomId) {
@@ -227,7 +290,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         selected,
         roomId,
         rollerName: normalizePlayerName(playerName),
-        visibility: "public"
+        visibility
       }));
 
       return;
@@ -239,6 +302,18 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }));
   }
 
+  roll(): void {
+    this.submitRoll("public");
+  }
+
+  rollHidden(): void {
+    if (!this.state.isGm) {
+      return;
+    }
+
+    this.submitRoll("gm_hidden");
+  }
+
   renderRoomStatus(): React.ReactNode {
     const {
       roomId,
@@ -246,7 +321,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       roomPlayerCount,
       players,
       playerName,
-      lastRollerName
+      isGm,
+      roomGmName,
+      lastRollerName,
+      lastRollVisibility
     } = this.state;
 
     if (!roomId) {
@@ -267,28 +345,53 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         <span className="room-status__item">
           Players: {roomPlayerCount === null ? "—" : roomPlayerCount}
         </span>
+        <span className="room-status__item">
+          GM: {roomGmName || "—"}
+        </span>
         {lastRollerName &&
-          <span className="room-status__item">Last roll: {lastRollerName}</span>}
+          <span className="room-status__item">
+            Last roll: {lastRollerName}
+            {lastRollVisibility === "gm_hidden" ? " (hidden)" : ""}
+          </span>}
       </div>
 
-      <label className="room-status__name">
-        Nick:
-        <input
-          maxLength={32}
-          value={playerName}
-          onChange={this.handlePlayerNameChange}
-        />
-      </label>
+      <div className="room-status__controls">
+        <label className="room-status__name">
+          Nick:
+          <input
+            maxLength={32}
+            value={playerName}
+            onChange={this.handlePlayerNameChange}
+          />
+        </label>
+
+        <label className="room-status__gm-toggle">
+          <input
+            type="checkbox"
+            checked={isGm}
+            onChange={this.handleGmChange}
+          />
+          GM
+        </label>
+      </div>
 
       <div className="room-status__players">
         <span>Connected:</span>
         {players.length
           ? players.map(player =>
-            <span className="room-status__player" key={player.id}>
-              {player.name}
+            <span
+              className={`room-status__player ${player.isGm ? "room-status__player--gm" : ""}`}
+              key={player.id}
+            >
+              {player.name}{player.isGm ? " (GM)" : ""}
             </span>)
           : <span className="room-status__player">—</span>}
       </div>
+
+      {isGm &&
+        <div className="room-status__gm-note">
+          Hidden rolls are visible only to you.
+        </div>}
     </div>;
   }
 
@@ -312,6 +415,11 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         <button id="roll" onClick={this.roll}>
           {this.state.selected.length ? "Re-roll Selected" : "Roll"}
         </button>
+
+        {this.state.roomId && this.state.isGm &&
+          <button id="hidden-roll" onClick={this.rollHidden}>
+            {this.state.selected.length ? "Hidden Re-roll Selected" : "Hidden Roll"}
+          </button>}
 
         <button id="clear" onClick={this.clearDice}>
           {this.state.selected.length ? "Remove Selected" : "Clear"}
