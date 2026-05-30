@@ -38,19 +38,43 @@ class RoomManager {
     return this.rooms.get(roomId);
   }
 
-  setExclusiveGm(room, socketId) {
+    getCurrentGm(room) {
+    for (const player of room.players.values()) {
+      if (player.isGm) {
+        return player;
+      }
+    }
+
+    return null;
+  }
+
+  setGmIfAvailable(room, socketId) {
+    const player = room.players.get(socketId);
+
+    if (!player) {
+      return false;
+    }
+
+    const currentGm = this.getCurrentGm(room);
+
+    if (currentGm && currentGm.id !== socketId) {
+      return false;
+    }
+
     const now = Date.now();
 
-    for (const player of room.players.values()) {
-      const shouldBeGm = player.id === socketId;
+    for (const roomPlayer of room.players.values()) {
+      const shouldBeGm = roomPlayer.id === socketId;
 
-      if (player.isGm !== shouldBeGm) {
-        player.isGm = shouldBeGm;
-        player.updatedAt = now;
+      if (roomPlayer.isGm !== shouldBeGm) {
+        roomPlayer.isGm = shouldBeGm;
+        roomPlayer.updatedAt = now;
       }
     }
 
     room.updatedAt = now;
+
+    return true;
   }
 
   clearGmIfCurrent(room, socketId) {
@@ -78,7 +102,9 @@ class RoomManager {
     });
 
     if (normalizeIsGm(isGm)) {
-      this.setExclusiveGm(room, socketId);
+      if (!this.setGmIfAvailable(room, socketId)) {
+        room.updatedAt = now;
+      }
     } else {
       room.updatedAt = now;
     }
@@ -99,7 +125,7 @@ class RoomManager {
     player.updatedAt = Date.now();
 
     if (normalizeIsGm(isGm)) {
-      this.setExclusiveGm(room, socketId);
+      this.setGmIfAvailable(room, socketId);
     } else {
       this.clearGmIfCurrent(room, socketId);
     }

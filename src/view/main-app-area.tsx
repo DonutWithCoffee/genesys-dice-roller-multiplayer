@@ -304,6 +304,11 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
   handleGmChange(event: React.ChangeEvent<HTMLInputElement>): void {
     const isGm = event.target.checked;
+    const { currentSocketId, roomGmId } = this.state;
+
+    if (isGm && roomGmId && currentSocketId && roomGmId !== currentSocketId) {
+      return;
+    }
 
     window.localStorage.setItem("genesys-is-gm", isGm ? "true" : "false");
 
@@ -574,6 +579,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       players,
       playerName,
       isGm,
+      currentSocketId,
+      roomGmId,
       roomGmName,
       lastRollerName,
       lastRollVisibility
@@ -589,6 +596,16 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       connected: "Connected",
       disconnected: "Disconnected"
     }[multiplayerStatus];
+
+    const gmLockedByAnotherPlayer = Boolean(
+      roomGmId &&
+      currentSocketId &&
+      roomGmId !== currentSocketId
+    );
+
+    const gmToggleTitle = gmLockedByAnotherPlayer && roomGmName
+      ? `GM role is locked by ${roomGmName}`
+      : "GM";
 
     return <div className="room-status">
       <div className="room-status__topline">
@@ -617,10 +634,11 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
           />
         </label>
 
-        <label className="room-status__gm-toggle">
+        <label className="room-status__gm-toggle" title={gmToggleTitle}>
           <input
             type="checkbox"
             checked={isGm}
+            disabled={gmLockedByAnotherPlayer}
             onChange={this.handleGmChange}
           />
           GM
@@ -639,6 +657,11 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
             </span>)
           : <span className="room-status__player">—</span>}
       </div>
+
+      {gmLockedByAnotherPlayer &&
+        <div className="room-status__gm-note">
+          GM role is locked by {roomGmName || "another player"}.
+        </div>}
 
       {isGm &&
         <div className="room-status__gm-note">
