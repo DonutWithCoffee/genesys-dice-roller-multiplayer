@@ -28,12 +28,18 @@ const RollResults: React.SFC<{ results: AllowedResults[] }> = ({ results }) => {
     if (resultsSymbols.length) {
         const flatRoll = removeOpposingSymbols(flatten(resultsSymbols)).sort(orderSymbols);
         status = adjudicateRoll(flatRoll);
-        if (flatRoll.length) {
-            elements.push(<div className={`group symbolic ${flatRoll.length > 8 ? "large" : ""}`}>{flatRoll.map(s => <SymbolDisplay symbol={s}/>)}</div>);
+       if (flatRoll.length) {
+    elements.push(
+        <div key="symbolic" className={`group symbolic ${flatRoll.length > 8 ? "large" : ""}`}>
+            {flatRoll.map((s, index) => <SymbolDisplay key={index} symbol={s}/>)}
+        </div>
+    );
+}
         }
-    }
 
-    elements.push(...resultsNumbers.map(score => <div className="group numeric">{score}</div>));
+    elements.push(...resultsNumbers.map((score, index) =>
+    <div key={`numeric-${index}`} className="group numeric">{score}</div>
+));
 
     return <div className={`roll-results ${status}`}>{elements}</div>;
 };

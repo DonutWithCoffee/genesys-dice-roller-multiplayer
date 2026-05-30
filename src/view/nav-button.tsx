@@ -33,7 +33,9 @@ export default class NavButton extends React.PureComponent<NavButtonProps, { exp
      */
     render() {
 
-        const lines = [2, 5, 8].map(y => <line x1="1.5" y1={y} x2="8.5" y2={y} />);
+        const lines = [2, 5, 8].map(y =>
+    <line key={y} x1="1.5" y1={y} x2="8.5" y2={y} />
+);
 
         return <svg
             xmlns="http://www.w3.org/2000/svg"
