@@ -44,10 +44,22 @@ app.get("/api/health", (req, res) => {
 app.use(express.static(distPath));
 
 app.get("/", (req, res) => {
+  res.redirect("/genesys");
+});
+
+app.get("/genesys", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
+app.get("/genesys/", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 
 app.get("/room/:roomId", (req, res) => {
+  res.sendFile(path.join(distPath, "index.html"));
+});
+
+app.get("/genesys/room/:roomId", (req, res) => {
   res.sendFile(path.join(distPath, "index.html"));
 });
 

@@ -56,8 +56,14 @@ export type MultiplayerSocketClient = {
   disconnect(): void;
 };
 
+const DEFAULT_ROOM_ID = "main";
+
 export function getRoomIdFromPath(pathname: string): string | null {
-  const match = pathname.match(/^\/room\/([^/]+)\/?$/);
+  if (pathname === "/genesys" || pathname === "/genesys/") {
+    return DEFAULT_ROOM_ID;
+  }
+
+  const match = pathname.match(/^(?:\/genesys)?\/room\/([^/]+)\/?$/);
 
   if (!match) {
     return null;
