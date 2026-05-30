@@ -334,3 +334,23 @@
     min-height: 0;
     padding: @padding / 2;
 }
+
+.roll-results__die-result.is-rerolled {
+    position: relative;
+    outline: 3px solid #ffd24a;
+    outline-offset: 3px;
+    border-radius: .45rem;
+    background: rgba(255, 210, 74, .18);
+    box-shadow:
+        0 0 0 2px rgba(0, 0, 0, .55),
+        0 0 18px rgba(255, 210, 74, .9);
+}
+
+.roll-results__die-result.is-rerolled::before {
+    content: "";
+    position: absolute;
+    inset: -6px;
+    border: 2px dashed #ffd24a;
+    border-radius: .6rem;
+    pointer-events: none;
+}
