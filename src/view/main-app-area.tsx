@@ -14,6 +14,8 @@ import {
 import DiceControls from "src/view/dice-controls";
 import DiceList from "src/view/dice-list";
 import RollResults from "src/view/roll-results";
+import SymbolDisplay from "src/view/display/symbol";
+import Symbols from "src/model/symbols";
 
 import { orderDice } from "src/util/order";
 
@@ -37,6 +39,10 @@ type RollHistoryEntry = {
   results: AllowedResults[];
 };
 
+type RoomRollEntry = RollHistoryEntry & {
+  isOwnRoll: boolean;
+};
+
 type MainAppAreaState = {
   dice: AllowedDice[];
   selected: AllowedDice[];
@@ -52,6 +58,7 @@ type MainAppAreaState = {
   roomGmName: string | null;
   lastRollerName: string | null;
   lastRollVisibility: RollVisibility | null;
+  lastRoomRoll: RoomRollEntry | null;
   rollHistory: RollHistoryEntry[];
   rollHistoryOpen: boolean;
   rollHistoryPosition: {
@@ -160,6 +167,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       roomGmName: null,
       lastRollerName: null,
       lastRollVisibility: null,
+      lastRoomRoll: null,
       rollHistory: [],
       rollHistoryOpen: false,
       rollHistoryPosition: {
@@ -267,12 +275,30 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
   applyRemoteRollResult(result: RollResult): void {
     const results = deserializeRollResults(result.results);
+    const historyEntry = createHistoryEntryFromRollResult(result, results);
+    const isOwnRoll = Boolean(
+      result.rollerId &&
+      this.state.currentSocketId &&
+      result.rollerId === this.state.currentSocketId
+    );
+    const lastRoomRoll: RoomRollEntry = {
+      ...historyEntry,
+      isOwnRoll
+    };
+
+    if (!isOwnRoll) {
+      this.setState(previousState => ({
+        lastRoomRoll,
+        rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
+      }));
+
+      return;
+    }
+
     const dice = applyResultsToDice(
       recreateDicePool(result.pool.dice),
       results
     );
-
-    const historyEntry = createHistoryEntryFromRollResult(result, results);
 
     this.setState(previousState => ({
       dice,
@@ -280,6 +306,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       results,
       lastRollerName: historyEntry.rollerName,
       lastRollVisibility: historyEntry.visibility,
+      lastRoomRoll,
       rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
     }));
   }
@@ -364,7 +391,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }));
   }
 
-  startRollHistoryDrag(event: React.MouseEvent<HTMLDivElement>): void {
+  startRollHistoryDrag(event: React.MouseEvent<HTMLElement>): void {
     if (event.button !== 0) {
       return;
     }
@@ -489,8 +516,25 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }
 
     return <div className="current-roll-meta">
-      Roll by: {lastRollerName}
-      {lastRollVisibility === "gm_hidden" ? " (hidden GM roll)" : ""}
+      Ваш бросок: {lastRollerName}
+      {lastRollVisibility === "gm_hidden" ? " (скрытый бросок ГМ)" : ""}
+    </div>;
+  }
+
+  renderRoomRollFeed(): React.ReactNode {
+    const { roomId, lastRoomRoll } = this.state;
+
+    if (!roomId || !lastRoomRoll || lastRoomRoll.isOwnRoll) {
+      return null;
+    }
+
+    return <div className="room-roll-feed">
+      <div className="room-roll-feed__meta">
+        Последний бросок комнаты: {lastRoomRoll.rollerName}
+        {lastRoomRoll.visibility === "gm_hidden" ? " (скрытый бросок ГМ)" : ""}
+      </div>
+
+      <RollResults results={lastRoomRoll.results} />
     </div>;
   }
 
@@ -517,13 +561,25 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       }}
     >
       {!rollHistoryOpen &&
-        <button
-          className="roll-history-widget__toggle"
-          type="button"
-          onClick={this.toggleRollHistory}
-        >
-          History ({rollHistory.length})
-        </button>}
+        <div className="roll-history-widget__closed">
+          <button
+            className="roll-history-widget__drag-handle"
+            type="button"
+            title="Перетащить историю"
+            aria-label="Перетащить историю бросков"
+            onMouseDown={this.startRollHistoryDrag}
+          >
+            ☰
+          </button>
+
+          <button
+            className="roll-history-widget__toggle"
+            type="button"
+            onClick={this.toggleRollHistory}
+          >
+            История ({rollHistory.length})
+          </button>
+        </div>}
 
       {rollHistoryOpen &&
         <div className="roll-history-widget__panel">
@@ -531,7 +587,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
             className="roll-history-widget__header"
             onMouseDown={this.startRollHistoryDrag}
           >
-            <span>Roll history ({rollHistory.length})</span>
+            <span>История бросков ({rollHistory.length})</span>
 
             <div className="roll-history-widget__actions">
               <button
@@ -539,16 +595,16 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
                 onMouseDown={event => event.stopPropagation()}
                 onClick={this.clearRollHistory}
               >
-                Clear
+                Очистить
               </button>
 
               <button
                 type="button"
                 onMouseDown={event => event.stopPropagation()}
                 onClick={this.toggleRollHistory}
-                aria-label="Close roll history"
+                aria-label="Свернуть историю бросков"
               >
-                ×
+                Свернуть
               </button>
             </div>
           </div>
@@ -560,7 +616,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
                   <span>{formatRollTime(entry.createdAt)}</span>
                   <span>{entry.rollerName}</span>
                   {entry.visibility === "gm_hidden" &&
-                    <span>Hidden GM roll</span>}
+                    <span>Скрытый бросок ГМ</span>}
                 </div>
 
                 <RollResults results={entry.results} />
@@ -582,8 +638,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       currentSocketId,
       roomGmId,
       roomGmName,
-      lastRollerName,
-      lastRollVisibility
+      lastRoomRoll
     } = this.state;
 
     if (!roomId) {
@@ -617,10 +672,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         <span className="room-status__item">
           GM: {roomGmName || "—"}
         </span>
-        {lastRollerName &&
+        {lastRoomRoll &&
           <span className="room-status__item">
-            Last roll: {lastRollerName}
-            {lastRollVisibility === "gm_hidden" ? " (hidden)" : ""}
+            Последний бросок: {lastRoomRoll.rollerName}
+            {lastRoomRoll.visibility === "gm_hidden" ? " (скрытый)" : ""}
           </span>}
       </div>
 
@@ -660,14 +715,33 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
       {gmLockedByAnotherPlayer &&
         <div className="room-status__gm-note">
-          GM role is locked by {roomGmName || "another player"}.
+          Роль ГМ занята: {roomGmName || "другой игрок"}.
         </div>}
 
       {isGm &&
         <div className="room-status__gm-note">
-          Hidden rolls are visible only to you.
+          Скрытые броски видны только вам.
         </div>}
     </div>;
+  }
+
+  renderSymbolGuide(): React.ReactNode {
+    return <details className="symbol-guide">
+      <summary>Подсказка по символам</summary>
+
+      <div className="symbol-guide__note">
+        «Бросок» показывает все выпавшие символы. «Итог» показывает результат после взаимного погашения успехов/провалов и преимуществ/угроз.
+      </div>
+
+      <div className="symbol-guide__grid">
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.SUCCESS} /> Успех — положительный результат проверки</span>
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.FAILURE} /> Провал — отменяет успех</span>
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.ADVANTAGE} /> Преимущество — полезный побочный эффект</span>
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.THREAT} /> Угроза — негативный побочный эффект</span>
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.TRIUMPH} /> Триумф — успех и сильный положительный эффект</span>
+        <span className="symbol-guide__item"><SymbolDisplay symbol={Symbols.DESPAIR} /> Отчаяние — серьёзное осложнение</span>
+      </div>
+    </details>;
   }
 
   render() {
@@ -686,6 +760,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         {this.renderCurrentRollLabel()}
 
         <RollResults results={this.state.results} />
+
+        {this.renderRoomRollFeed()}
+
+        {this.renderSymbolGuide()}
       </div>
 
       <div className="actions">
