@@ -29,6 +29,14 @@ import {
 
 type MultiplayerStatus = "local" | "connecting" | "connected" | "disconnected";
 
+type RollHistoryEntry = {
+  id: string;
+  createdAt: number;
+  rollerName: string;
+  visibility: RollVisibility;
+  results: AllowedResults[];
+};
+
 type MainAppAreaState = {
   dice: AllowedDice[];
   selected: AllowedDice[];
@@ -44,7 +52,17 @@ type MainAppAreaState = {
   roomGmName: string | null;
   lastRollerName: string | null;
   lastRollVisibility: RollVisibility | null;
+  rollHistory: RollHistoryEntry[];
+  rollHistoryOpen: boolean;
+  rollHistoryPosition: {
+    left: number;
+    top: number;
+  };
 };
+
+const MAX_ROLL_HISTORY_ITEMS = 20;
+const ROLL_HISTORY_PANEL_WIDTH = 320;
+const ROLL_HISTORY_PANEL_MIN_HEIGHT = 64;
 
 function getInitialPlayerName(): string {
   const savedName = window.localStorage.getItem("genesys-player-name");
@@ -70,8 +88,55 @@ function normalizePlayerName(playerName: string): string {
   return trimmed.slice(0, 32);
 }
 
+function createLocalHistoryId(): string {
+  return `roll_history_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 10)}`;
+}
+
+function createHistoryEntryFromRollResult(
+  rollResult: RollResult,
+  results: AllowedResults[]
+): RollHistoryEntry {
+  return {
+    id: rollResult.id,
+    createdAt: rollResult.createdAt,
+    rollerName: rollResult.rollerName || "Player",
+    visibility: rollResult.visibility,
+    results
+  };
+}
+
+function createLocalHistoryEntry(
+  rollerName: string,
+  visibility: RollVisibility,
+  results: AllowedResults[]
+): RollHistoryEntry {
+  return {
+    id: createLocalHistoryId(),
+    createdAt: Date.now(),
+    rollerName,
+    visibility,
+    results
+  };
+}
+
+function addRollHistoryEntry(
+  history: RollHistoryEntry[],
+  entry: RollHistoryEntry
+): RollHistoryEntry[] {
+  return [entry].concat(history).slice(0, MAX_ROLL_HISTORY_ITEMS);
+}
+
+function formatRollTime(timestamp: number): string {
+  return new Date(timestamp).toLocaleTimeString([], {
+    hour: "2-digit",
+    minute: "2-digit",
+    second: "2-digit"
+  });
+}
+
 export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
   private multiplayerClient: MultiplayerSocketClient | null = null;
+  private rollHistoryDragOffset: { x: number; y: number } | null = null;
 
   constructor(props: {}) {
     super(props);
@@ -94,11 +159,22 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       roomGmId: null,
       roomGmName: null,
       lastRollerName: null,
-      lastRollVisibility: null
+      lastRollVisibility: null,
+      rollHistory: [],
+      rollHistoryOpen: false,
+      rollHistoryPosition: {
+        left: 16,
+        top: 96
+      }
     };
 
     this.addDie = this.addDie.bind(this);
     this.clearDice = this.clearDice.bind(this);
+    this.clearRollHistory = this.clearRollHistory.bind(this);
+    this.toggleRollHistory = this.toggleRollHistory.bind(this);
+    this.startRollHistoryDrag = this.startRollHistoryDrag.bind(this);
+    this.handleRollHistoryDrag = this.handleRollHistoryDrag.bind(this);
+    this.stopRollHistoryDrag = this.stopRollHistoryDrag.bind(this);
     this.toggleSelection = this.toggleSelection.bind(this);
     this.roll = this.roll.bind(this);
     this.rollHidden = this.rollHidden.bind(this);
@@ -158,6 +234,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       this.multiplayerClient.disconnect();
       this.multiplayerClient = null;
     }
+
+    this.stopRollHistoryDrag();
   }
 
   applyServerHello(payload: ServerHello): void {
@@ -194,13 +272,16 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       results
     );
 
-    this.setState({
+    const historyEntry = createHistoryEntryFromRollResult(result, results);
+
+    this.setState(previousState => ({
       dice,
       selected: [],
       results,
-      lastRollerName: result.rollerName || "Player",
-      lastRollVisibility: result.visibility
-    });
+      lastRollerName: historyEntry.rollerName,
+      lastRollVisibility: historyEntry.visibility,
+      rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
+    }));
   }
 
   syncPlayerState(playerName: string, isGm: boolean): void {
@@ -265,6 +346,71 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     });
   }
 
+  clearRollHistory(): void {
+    this.setState({
+      rollHistory: [],
+      rollHistoryOpen: false
+    });
+  }
+
+  toggleRollHistory(): void {
+    this.setState(previousState => ({
+      rollHistoryOpen: !previousState.rollHistoryOpen
+    }));
+  }
+
+  startRollHistoryDrag(event: React.MouseEvent<HTMLDivElement>): void {
+    if (event.button !== 0) {
+      return;
+    }
+
+    event.preventDefault();
+
+    this.rollHistoryDragOffset = {
+      x: event.clientX - this.state.rollHistoryPosition.left,
+      y: event.clientY - this.state.rollHistoryPosition.top
+    };
+
+    window.addEventListener("mousemove", this.handleRollHistoryDrag);
+    window.addEventListener("mouseup", this.stopRollHistoryDrag);
+  }
+
+  handleRollHistoryDrag(event: MouseEvent): void {
+    if (!this.rollHistoryDragOffset) {
+      return;
+    }
+
+    const left = Math.max(
+      8,
+      Math.min(
+        window.innerWidth - ROLL_HISTORY_PANEL_WIDTH - 8,
+        event.clientX - this.rollHistoryDragOffset.x
+      )
+    );
+
+    const top = Math.max(
+      8,
+      Math.min(
+        window.innerHeight - ROLL_HISTORY_PANEL_MIN_HEIGHT,
+        event.clientY - this.rollHistoryDragOffset.y
+      )
+    );
+
+    this.setState({
+      rollHistoryPosition: {
+        left,
+        top
+      }
+    });
+  }
+
+  stopRollHistoryDrag(): void {
+    this.rollHistoryDragOffset = null;
+
+    window.removeEventListener("mousemove", this.handleRollHistoryDrag);
+    window.removeEventListener("mouseup", this.stopRollHistoryDrag);
+  }
+
   toggleSelection(toggledDie: AllowedDice): void {
     const { selected } = this.state;
 
@@ -283,22 +429,38 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
   submitRoll(visibility: RollVisibility): void {
     const { dice, selected, roomId, playerName } = this.state;
+    const normalizedPlayerName = normalizePlayerName(playerName);
 
     if (this.multiplayerClient && roomId) {
       this.multiplayerClient.requestRoll(createLocalRollRequest({
         dice,
         selected,
         roomId,
-        rollerName: normalizePlayerName(playerName),
+        rollerName: normalizedPlayerName,
         visibility
       }));
 
       return;
     }
 
-    this.setState(rollDiceLocally({
+    const localResult = rollDiceLocally({
       dice,
       selected
+    });
+
+    const historyEntry = createLocalHistoryEntry(
+      normalizedPlayerName,
+      visibility,
+      localResult.results
+    );
+
+    this.setState(previousState => ({
+      dice: localResult.dice,
+      selected: localResult.selected,
+      results: localResult.results,
+      lastRollerName: historyEntry.rollerName,
+      lastRollVisibility: historyEntry.visibility,
+      rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
     }));
   }
 
@@ -312,6 +474,96 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     }
 
     this.submitRoll("gm_hidden");
+  }
+
+  renderCurrentRollLabel(): React.ReactNode {
+    const { lastRollerName, lastRollVisibility, results } = this.state;
+
+    if (!lastRollerName || !results.length) {
+      return null;
+    }
+
+    return <div className="current-roll-meta">
+      Roll by: {lastRollerName}
+      {lastRollVisibility === "gm_hidden" ? " (hidden GM roll)" : ""}
+    </div>;
+  }
+
+  renderRollHistory(): React.ReactNode {
+    const {
+      rollHistory,
+      rollHistoryOpen,
+      rollHistoryPosition
+    } = this.state;
+
+    if (!rollHistory.length) {
+      return null;
+    }
+
+    const widgetClassName = rollHistoryOpen
+      ? "roll-history-widget roll-history-widget--open"
+      : "roll-history-widget roll-history-widget--closed";
+
+    return <div
+      className={widgetClassName}
+      style={{
+        left: rollHistoryPosition.left,
+        top: rollHistoryPosition.top
+      }}
+    >
+      {!rollHistoryOpen &&
+        <button
+          className="roll-history-widget__toggle"
+          type="button"
+          onClick={this.toggleRollHistory}
+        >
+          History ({rollHistory.length})
+        </button>}
+
+      {rollHistoryOpen &&
+        <div className="roll-history-widget__panel">
+          <div
+            className="roll-history-widget__header"
+            onMouseDown={this.startRollHistoryDrag}
+          >
+            <span>Roll history ({rollHistory.length})</span>
+
+            <div className="roll-history-widget__actions">
+              <button
+                type="button"
+                onMouseDown={event => event.stopPropagation()}
+                onClick={this.clearRollHistory}
+              >
+                Clear
+              </button>
+
+              <button
+                type="button"
+                onMouseDown={event => event.stopPropagation()}
+                onClick={this.toggleRollHistory}
+                aria-label="Close roll history"
+              >
+                ×
+              </button>
+            </div>
+          </div>
+
+          <div className="roll-history-widget__list">
+            {rollHistory.map((entry: RollHistoryEntry) =>
+              <div className="roll-history-widget__item" key={entry.id}>
+                <div className="roll-history-widget__meta">
+                  <span>{formatRollTime(entry.createdAt)}</span>
+                  <span>{entry.rollerName}</span>
+                  {entry.visibility === "gm_hidden" &&
+                    <span>Hidden GM roll</span>}
+                </div>
+
+                <RollResults results={entry.results} />
+              </div>
+            )}
+          </div>
+        </div>}
+    </div>;
   }
 
   renderRoomStatus(): React.ReactNode {
@@ -408,6 +660,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
           selectCallback={this.toggleSelection}
         />
 
+        {this.renderCurrentRollLabel()}
+
         <RollResults results={this.state.results} />
       </div>
 
@@ -425,6 +679,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
           {this.state.selected.length ? "Remove Selected" : "Clear"}
         </button>
       </div>
+
+      {this.renderRollHistory()}
     </div>;
   }
 }
