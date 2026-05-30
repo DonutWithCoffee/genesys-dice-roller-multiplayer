@@ -1,72 +1,130 @@
 # Genesys Dice Roller Multiplayer Fork
 
-Этот форк расширяет оригинальный Genesys Dice Roller и добавляет self-hosted realtime multiplayer.
+Форк оригинального Genesys Dice Roller с self-hosted multiplayer для одной игровой компании.
 
-Цель проекта — сохранить оригинальный UI/UX приложения, но добавить комнаты, синхронизацию бросков и серверную обработку результатов.
+Цель проекта — сохранить оригинальный UI/UX дайс-роллера и добавить сетевую игру через общий стол.
 
-Оригинальный проект:
+## Что умеет форк
 
-https://github.com/D1SoveR/genesys-dice-roller
+- общий игровой стол по одной ссылке;
+- синхронизацию публичных бросков между игроками;
+- отображение имени игрока, сделавшего бросок;
+- историю бросков;
+- скрытые броски ведущего;
+- историю скрытых бросков видит только ведущий;
+- lock роли GM: одновременно только один ведущий;
+- защиту локального пула кубов игрока от чужих бросков;
+- reroll выбранных кубов без создания новой записи истории;
+- подсветку переброшенных кубов у всех игроков;
+- отображение полного броска и итогового результата после подсчёта;
+- текстовую расшифровку итога проверки;
+- подсказку по символам кубов;
+- серверный расчёт результатов;
+- Node.js backend на Express + Socket.IO;
+- запуск на собственном VPS через nginx.
 
-UI-референс:
+## Чего здесь нет
 
-https://d1sover.github.io/genesys-dice-roller/
-
-## Что добавляет форк
-
-* realtime multiplayer rooms;
-* URL комнат в формате `/room/:roomId`;
-* синхронизацию публичных бросков между игроками;
-* отображение имени игрока, сделавшего бросок;
-* историю бросков;
-* GM mode для мастера;
-* скрытые броски мастера, невидимые игрокам;
-* историю скрытых бросков, видимую только мастеру;
-* server-authoritative rolls — результат считает сервер, а не клиент;
-* Node.js backend на Express + Socket.IO;
-* self-hosted deployment на VPS через nginx и HTTPS.
-
-## Чего здесь не будет
-
-* аккаунтов;
-* OAuth;
-* базы пользователей;
-* Discord-интеграции;
-* VTT-платформы;
-* SaaS-функций;
-* переписывания frontend с нуля.
-
-## Главный принцип
-
-Frontend остаётся максимально близким к оригинальному Genesys Dice Roller.
-
-Multiplayer добавляется как слой поверх существующего приложения, без смены UX и без замены текущего renderer pipeline.
+- аккаунтов;
+- OAuth;
+- базы пользователей;
+- Discord-интеграции;
+- VTT-платформы;
+- SaaS-функций;
+- множества публичных комнат.
 
 ## Локальный запуск
 
-```bash
-npm.cmd run build
-npm.cmd run start:server
-```
-
-Приложение:
-
-```text
-http://localhost:3001/
-```
-
-Тестовая комната:
-
-```text
-http://localhost:3001/room/test
-```
-
-Health check:
+Установить зависимости:
 
 ```bash
-curl http://localhost:3001/api/health
+npm install
 ```
 
-## License
+Собрать frontend:
+
+```bash
+npm run build
+```
+
+Запустить сервер:
+
+```bash
+npm run start:server
+```
+
+Открыть:
+
+```text
+http://localhost:3001/genesys
+```
+
+## Деплой на VPS
+
+Пример пути проекта:
+
+```bash
+/opt/genesys-dice-roller
+```
+
+Обновить код и собрать:
+
+```bash
+cd /opt/genesys-dice-roller
+git pull --ff-only
+npm ci
+npm run build
+```
+
+Приложение должно слушать локальный порт:
+
+```bash
+HOST=127.0.0.1 PORT=3001 node server/index.js
+```
+
+Проверка:
+
+```bash
+curl http://127.0.0.1:3001/api/health
+```
+
+Пример nginx reverse proxy:
+
+```nginx
+server {
+    listen 80;
+    listen [::]:80;
+
+    server_name example.com;
+
+    location / {
+        proxy_pass http://127.0.0.1:3001;
+        proxy_http_version 1.1;
+
+        proxy_set_header Host $host;
+        proxy_set_header X-Real-IP $remote_addr;
+        proxy_set_header X-Forwarded-For $proxy_add_x_forwarded_for;
+        proxy_set_header X-Forwarded-Proto $scheme;
+
+        proxy_set_header Upgrade $http_upgrade;
+        proxy_set_header Connection "upgrade";
+    }
+}
+```
+
+Проверить nginx:
+
+```bash
+nginx -t
+systemctl reload nginx
+```
+
+Рабочая ссылка после настройки сервера:
+
+```text
+http://example.com/genesys
+```
+
+## Лицензия
 
 GPL-3.0-or-later.
