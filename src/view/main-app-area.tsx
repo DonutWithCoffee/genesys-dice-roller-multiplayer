@@ -37,6 +37,7 @@ type RollHistoryEntry = {
   rollerName: string;
   visibility: RollVisibility;
   results: AllowedResults[];
+  rerolledDiceIndexes: number[];
 };
 
 type RoomRollEntry = RollHistoryEntry & {
@@ -47,6 +48,8 @@ type MainAppAreaState = {
   dice: AllowedDice[];
   selected: AllowedDice[];
   results: AllowedResults[];
+  currentRollId: string | null;
+  currentRerolledDiceIndexes: number[];
   roomId: string | null;
   multiplayerStatus: MultiplayerStatus;
   roomPlayerCount: number | null;
@@ -108,29 +111,45 @@ function createHistoryEntryFromRollResult(
     createdAt: rollResult.createdAt,
     rollerName: rollResult.rollerName || "Player",
     visibility: rollResult.visibility,
-    results
+    results,
+    rerolledDiceIndexes: rollResult.rerolledDiceIndexes || []
   };
 }
 
 function createLocalHistoryEntry(
+  id: string,
   rollerName: string,
   visibility: RollVisibility,
-  results: AllowedResults[]
+  results: AllowedResults[],
+  rerolledDiceIndexes: number[]
 ): RollHistoryEntry {
   return {
-    id: createLocalHistoryId(),
+    id,
     createdAt: Date.now(),
     rollerName,
     visibility,
-    results
+    results,
+    rerolledDiceIndexes
   };
 }
 
-function addRollHistoryEntry(
+function upsertRollHistoryEntry(
   history: RollHistoryEntry[],
   entry: RollHistoryEntry
 ): RollHistoryEntry[] {
-  return [entry].concat(history).slice(0, MAX_ROLL_HISTORY_ITEMS);
+  const existingIndex = history.findIndex(historyEntry => historyEntry.id === entry.id);
+
+  if (existingIndex === -1) {
+    return [entry].concat(history).slice(0, MAX_ROLL_HISTORY_ITEMS);
+  }
+
+  return history.map(historyEntry => historyEntry.id === entry.id ? entry : historyEntry);
+}
+
+function getSelectedDiceIndexes(dice: AllowedDice[], selected: AllowedDice[]): number[] {
+  return dice
+    .map((die, index) => selected.includes(die) ? index : -1)
+    .filter(index => index !== -1);
 }
 
 function formatRollTime(timestamp: number): string {
@@ -156,6 +175,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       dice: [],
       selected: [],
       results: [],
+      currentRollId: null,
+      currentRerolledDiceIndexes: [],
       roomId,
       multiplayerStatus: roomId ? "connecting" : "local",
       roomPlayerCount: null,
@@ -289,7 +310,7 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     if (!isOwnRoll) {
       this.setState(previousState => ({
         lastRoomRoll,
-        rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
+        rollHistory: upsertRollHistoryEntry(previousState.rollHistory, historyEntry)
       }));
 
       return;
@@ -304,10 +325,12 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       dice,
       selected: [],
       results,
+      currentRollId: historyEntry.id,
+      currentRerolledDiceIndexes: historyEntry.rerolledDiceIndexes,
       lastRollerName: historyEntry.rollerName,
       lastRollVisibility: historyEntry.visibility,
       lastRoomRoll,
-      rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
+      rollHistory: upsertRollHistoryEntry(previousState.rollHistory, historyEntry)
     }));
   }
 
@@ -350,7 +373,9 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     const { dice } = this.state;
 
     this.setState({
-      dice: dice.concat([newDie]).sort(orderDice)
+      dice: dice.concat([newDie]).sort(orderDice),
+      currentRollId: null,
+      currentRerolledDiceIndexes: []
     });
   }
 
@@ -363,7 +388,9 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       this.setState({
         dice: remainingDice,
         selected: [],
-        results: remainingDice.map(die => die.currentResult)
+        results: remainingDice.map(die => die.currentResult),
+        currentRollId: null,
+        currentRerolledDiceIndexes: []
       });
 
       return;
@@ -373,6 +400,8 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
       dice: [],
       selected: [],
       results: [],
+      currentRollId: null,
+      currentRerolledDiceIndexes: [],
       lastRollerName: null,
       lastRollVisibility: null
     });
@@ -460,8 +489,9 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
   }
 
   submitRoll(visibility: RollVisibility): void {
-    const { dice, selected, roomId, playerName } = this.state;
+    const { dice, selected, roomId, playerName, currentRollId } = this.state;
     const normalizedPlayerName = normalizePlayerName(playerName);
+    const selectedIndexes = getSelectedDiceIndexes(dice, selected);
 
     if (this.multiplayerClient && roomId) {
       this.multiplayerClient.requestRoll(createLocalRollRequest({
@@ -481,18 +511,22 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
     });
 
     const historyEntry = createLocalHistoryEntry(
+      selectedIndexes.length && currentRollId ? currentRollId : createLocalHistoryId(),
       normalizedPlayerName,
       visibility,
-      localResult.results
+      localResult.results,
+      selectedIndexes
     );
 
     this.setState(previousState => ({
       dice: localResult.dice,
       selected: localResult.selected,
       results: localResult.results,
+      currentRollId: historyEntry.id,
+      currentRerolledDiceIndexes: historyEntry.rerolledDiceIndexes,
       lastRollerName: historyEntry.rollerName,
       lastRollVisibility: historyEntry.visibility,
-      rollHistory: addRollHistoryEntry(previousState.rollHistory, historyEntry)
+      rollHistory: upsertRollHistoryEntry(previousState.rollHistory, historyEntry)
     }));
   }
 
@@ -534,7 +568,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
         {lastRoomRoll.visibility === "gm_hidden" ? " (скрытый бросок ГМ)" : ""}
       </div>
 
-      <RollResults results={lastRoomRoll.results} />
+      <RollResults
+        results={lastRoomRoll.results}
+        highlightedIndexes={lastRoomRoll.rerolledDiceIndexes}
+      />
     </div>;
   }
 
@@ -619,7 +656,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
                     <span>Скрытый бросок ГМ</span>}
                 </div>
 
-                <RollResults results={entry.results} />
+                <RollResults
+                  results={entry.results}
+                  highlightedIndexes={entry.rerolledDiceIndexes}
+                />
               </div>
             )}
           </div>
@@ -759,7 +799,10 @@ export default class MainAppArea extends React.Component<{}, MainAppAreaState> {
 
         {this.renderCurrentRollLabel()}
 
-        <RollResults results={this.state.results} />
+        <RollResults
+          results={this.state.results}
+          highlightedIndexes={this.state.currentRerolledDiceIndexes}
+        />
 
         {this.renderRoomRollFeed()}
 

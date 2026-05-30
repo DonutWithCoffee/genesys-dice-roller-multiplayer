@@ -34,6 +34,8 @@ export type RollResult = {
   visibility: RollVisibility;
   pool: DicePoolDescriptor;
   results: SerializedRollResult[];
+  revision: number;
+  rerolledDiceIndexes: number[];
   createdAt: number;
 };
 
@@ -95,6 +97,8 @@ export function createRollResult(
     visibility: request.visibility,
     pool: request.pool,
     results: serializeRollResults(results),
+    revision: 1,
+    rerolledDiceIndexes: [],
     createdAt
   };
 }

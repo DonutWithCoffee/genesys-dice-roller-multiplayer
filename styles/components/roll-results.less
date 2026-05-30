@@ -53,6 +53,76 @@
     opacity: .6;
 }
 
+
+
+.roll-results__groups--dice {
+    align-items: stretch;
+    gap: @padding / 3;
+}
+
+.roll-results__die {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    flex-wrap: wrap;
+    min-width: @padding * 2.1;
+    min-height: @padding * 2.1;
+    margin: @padding / 4;
+    padding: @padding / 5 @padding / 3;
+    border-radius: .4rem;
+    border: 1px solid rgba(255, 255, 255, .18);
+    background: rgba(255, 255, 255, .06);
+    box-shadow: inset 0 0 0 1px rgba(0, 0, 0, .15);
+
+    .dice-symbol {
+        font-size: @padding * 1.45;
+        line-height: @padding * 1.45;
+    }
+}
+
+.roll-results__die--rerolled {
+    border-color: rgba(255, 210, 96, .95);
+    background: rgba(255, 210, 96, .22);
+    box-shadow:
+        0 0 .55rem rgba(255, 210, 96, .48),
+        inset 0 0 0 1px rgba(255, 255, 255, .22);
+}
+
+.roll-results__die--numeric,
+.roll-results__die--empty {
+    font-family: sans-serif;
+    font-size: @padding * 1.15;
+    line-height: @padding * 1.15;
+    color: #fff;
+}
+
+.roll-results__die--empty {
+    color: rgba(255, 255, 255, .64);
+}
+
+.roll-results__reroll-note {
+    margin-top: -@padding / 4;
+    text-align: center;
+    font-family: sans-serif;
+    font-size: @padding * .75;
+    line-height: @padding;
+    color: rgba(255, 224, 150, .95);
+}
+
+.roll-results__summary {
+    align-self: center;
+    max-width: 100%;
+    margin-top: -@padding / 4;
+    padding: @padding / 4 @padding / 2;
+    border-radius: .35rem;
+    background: rgba(0, 0, 0, .28);
+    color: rgba(255, 255, 255, .96);
+    font-family: sans-serif;
+    font-size: @padding * .85;
+    line-height: @padding * 1.05;
+    text-align: center;
+}
+
 .symbol-guide {
     box-sizing: border-box;
     width: 100%;

@@ -10,27 +10,44 @@ import Symbols from "src/model/symbols";
  * @param symbols  List of symbols rolled
  * @returns        List with symbols remaining after cancelling results out
  */
+function pushRepeated(target: Symbols[], symbol: Symbols, count: number): void {
+    for (let index = 0; index < count; index++) {
+        target.push(symbol);
+    }
+}
+
 export function removeOpposingSymbols(symbols: Symbols[]): Symbols[] {
 
-    // Make the first pass by counting all the symbols
-    const remove = countBy(symbols);
+    const counts = countBy(symbols);
 
-    // Delete counts for triumphs and despairs, as these never cancel each other out
-    delete remove[Symbols.TRIUMPH];
-    delete remove[Symbols.DESPAIR];
+    const triumphs = counts[Symbols.TRIUMPH] || 0;
+    const despairs = counts[Symbols.DESPAIR] || 0;
 
-    // Use the counts and mark the smaller number of symbols for removal
-    remove[Symbols.SUCCESS] = remove[Symbols.FAILURE] = Math.min(remove[Symbols.SUCCESS], remove[Symbols.FAILURE]);
-    remove[Symbols.ADVANTAGE] = remove[Symbols.THREAT] = Math.min(remove[Symbols.ADVANTAGE], remove[Symbols.THREAT]);
+    const successes = counts[Symbols.SUCCESS] || 0;
+    const failures = counts[Symbols.FAILURE] || 0;
+
+    const advantages = counts[Symbols.ADVANTAGE] || 0;
+    const threats = counts[Symbols.THREAT] || 0;
+
+    const successBalance = successes + triumphs - failures - despairs;
+    const advantageBalance = advantages - threats;
 
     const remainingSymbols: Symbols[] = [];
-    symbols.forEach(item => {
-        if (remove[item]) {
-            remove[item]--;
-        } else {
-            remainingSymbols.push(item);
-        }
-    });
+
+    pushRepeated(remainingSymbols, Symbols.TRIUMPH, triumphs);
+    pushRepeated(remainingSymbols, Symbols.DESPAIR, despairs);
+
+    if (successBalance > 0) {
+        pushRepeated(remainingSymbols, Symbols.SUCCESS, Math.max(0, successBalance - triumphs));
+    } else if (successBalance < 0) {
+        pushRepeated(remainingSymbols, Symbols.FAILURE, Math.max(0, -successBalance - despairs));
+    }
+
+    if (advantageBalance > 0) {
+        pushRepeated(remainingSymbols, Symbols.ADVANTAGE, advantageBalance);
+    } else if (advantageBalance < 0) {
+        pushRepeated(remainingSymbols, Symbols.THREAT, -advantageBalance);
+    }
 
     return remainingSymbols;
 }

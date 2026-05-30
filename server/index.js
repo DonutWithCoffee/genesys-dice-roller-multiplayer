@@ -13,8 +13,7 @@ const app = express();
 const httpServer = http.createServer(app);
 const roomManager = new RoomManager();
 
-const socketRollState = new Map();
-const roomRollState = new Map();
+const playerRollState = new Map();
 
 const io = new Server(httpServer, {
   path: "/socket.io",
@@ -71,35 +70,47 @@ function getRoomIdFromPayload(payload) {
   return payload.roomId.trim();
 }
 
-function getPreviousResultsForRoll(socket, payload) {
+function getRollVisibility(payload) {
+  return payload && payload.visibility === "gm_hidden" ? "gm_hidden" : "public";
+}
+
+function getPlayerRollStateKey(socketId, roomId, visibility) {
+  return `${socketId}:${roomId || "local"}:${visibility}`;
+}
+
+function getPreviousRollState(socket, payload) {
   const roomId = getRoomIdFromPayload(payload);
+  const visibility = getRollVisibility(payload);
 
-  if (roomId && payload.visibility === "public") {
-    const roomState = roomRollState.get(roomId);
-
-    return roomState ? roomState.results : null;
-  }
-
-  const socketState = socketRollState.get(socket.id);
-
-  return socketState ? socketState.results : null;
+  return playerRollState.get(getPlayerRollStateKey(socket.id, roomId, visibility)) || null;
 }
 
 function saveRollState(socket, rollResult) {
-  socketRollState.set(socket.id, {
+  const key = getPlayerRollStateKey(
+    socket.id,
+    rollResult.roomId,
+    rollResult.visibility
+  );
+
+  playerRollState.set(key, {
+    id: rollResult.id,
     roomId: rollResult.roomId,
+    visibility: rollResult.visibility,
     pool: rollResult.pool,
     results: rollResult.results,
+    revision: rollResult.revision,
+    createdAt: rollResult.createdAt,
     updatedAt: Date.now()
   });
+}
 
-  if (rollResult.roomId && rollResult.visibility === "public") {
-    roomRollState.set(rollResult.roomId, {
-      roomId: rollResult.roomId,
-      pool: rollResult.pool,
-      results: rollResult.results,
-      updatedAt: Date.now()
-    });
+function deleteSocketRollStates(socketId) {
+  const keyPrefix = `${socketId}:`;
+
+  for (const key of playerRollState.keys()) {
+    if (key.startsWith(keyPrefix)) {
+      playerRollState.delete(key);
+    }
   }
 }
 
@@ -185,10 +196,10 @@ io.on("connection", socket => {
       roomId
     });
 
+    deleteSocketRollStates(socket.id);
+
     if (snapshot) {
       io.to(roomId).emit("room_state", snapshot);
-    } else {
-      roomRollState.delete(roomId);
     }
   });
 
@@ -225,8 +236,8 @@ io.on("connection", socket => {
     }
 
     const authoritativePayload = createAuthoritativeRollPayload(socket, payload);
-    const previousResults = getPreviousResultsForRoll(socket, authoritativePayload);
-    const execution = executeRollRequest(authoritativePayload, previousResults);
+    const previousRollState = getPreviousRollState(socket, authoritativePayload);
+    const execution = executeRollRequest(authoritativePayload, previousRollState);
 
     if (!execution.ok) {
       socket.emit("roll_error", {
@@ -255,15 +266,13 @@ io.on("connection", socket => {
   });
 
   socket.on("disconnect", () => {
-    socketRollState.delete(socket.id);
+    deleteSocketRollStates(socket.id);
 
     const changedRooms = roomManager.removeSocket(socket.id);
 
     changedRooms.forEach(change => {
       if (change.snapshot) {
         io.to(change.roomId).emit("room_state", change.snapshot);
-      } else {
-        roomRollState.delete(change.roomId);
       }
     });
   });

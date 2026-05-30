@@ -252,7 +252,39 @@ function normalizeRequest(request) {
   };
 }
 
-function executeRollRequest(request, previousResults) {
+function hasSameDicePool(previousRollState, dice) {
+  if (!previousRollState || !previousRollState.pool || !Array.isArray(previousRollState.pool.dice)) {
+    return false;
+  }
+
+  if (previousRollState.pool.dice.length !== dice.length) {
+    return false;
+  }
+
+  return previousRollState.pool.dice.every((descriptor, index) => descriptor.type === dice[index].type);
+}
+
+function canUpdatePreviousRoll(previousRollState, normalizedRequest) {
+  if (!previousRollState || !Array.isArray(previousRollState.results)) {
+    return false;
+  }
+
+  if (previousRollState.results.length !== normalizedRequest.pool.dice.length) {
+    return false;
+  }
+
+  if (previousRollState.roomId !== normalizedRequest.roomId) {
+    return false;
+  }
+
+  if (previousRollState.visibility !== normalizedRequest.visibility) {
+    return false;
+  }
+
+  return hasSameDicePool(previousRollState, normalizedRequest.pool.dice);
+}
+
+function executeRollRequest(request, previousRollState) {
   const validation = validateRollRequest(request);
 
   if (!validation.ok) {
@@ -265,12 +297,13 @@ function executeRollRequest(request, previousResults) {
   const normalizedRequest = normalizeRequest(request);
   const dice = normalizedRequest.pool.dice;
   const selectedIndexes = normalizedRequest.pool.selectedIndexes;
+  const isRerollUpdate = selectedIndexes.length > 0 && canUpdatePreviousRoll(previousRollState, normalizedRequest);
 
   let results;
 
   if (selectedIndexes.length) {
-    results = Array.isArray(previousResults) && previousResults.length === dice.length
-      ? previousResults.map(cloneSerializedResult)
+    results = isRerollUpdate
+      ? previousRollState.results.map(cloneSerializedResult)
       : dice.map(() => null);
 
     selectedIndexes.forEach(index => {
@@ -283,7 +316,7 @@ function executeRollRequest(request, previousResults) {
   return {
     ok: true,
     result: {
-      id: createId("roll_result"),
+      id: isRerollUpdate ? previousRollState.id : createId("roll_result"),
       requestId: normalizedRequest.id,
       roomId: normalizedRequest.roomId,
       rollerId: normalizedRequest.rollerId,
@@ -291,7 +324,9 @@ function executeRollRequest(request, previousResults) {
       visibility: normalizedRequest.visibility,
       pool: normalizedRequest.pool,
       results,
-      createdAt: Date.now()
+      revision: isRerollUpdate ? previousRollState.revision + 1 : 1,
+      rerolledDiceIndexes: selectedIndexes.length ? selectedIndexes.slice() : [],
+      createdAt: isRerollUpdate ? previousRollState.createdAt : Date.now()
     }
   };
 }
